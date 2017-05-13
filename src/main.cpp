@@ -70,6 +70,7 @@ int main() {
 
   // MPC is initialized here!
   MPC mpc;
+  //int iters = 10;
 
   h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -87,10 +88,59 @@ int main() {
           // j[1] is the data JSON object
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
+          Eigen::VectorXd ptsxE = Eigen::VectorXd::Map(ptsx.data(), ptsx.size());
+          Eigen::VectorXd ptsyE = Eigen::VectorXd::Map(ptsy.data(), ptsy.size());
+//          Eigen::VectorXd ptsx = j[1]["ptsx"];
+//          Eigen::VectorXd ptsy = j[1]["ptsy"];
+
           double px = j[1]["x"];
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+
+          auto coeffs = polyfit(ptsxE,ptsyE,3);
+          double cte = polyeval(coeffs, px) - py;
+          double epsi = -atan(coeffs[1]);
+
+          cout << "DEBUG: " << endl;
+          cout << "px: " << px << endl;
+          cout << "py: " << py << endl;
+          cout << "cte: " << cte << endl;
+          cout << "coef0: " << coeffs[0] << endl;
+          cout << "coef1: " << coeffs[1] << endl;
+          //cout << "coef2: " << coeffs[2] << endl;
+          //cout << "coef3: " << coeffs[3] << endl;
+
+          Eigen::VectorXd state(6);
+          state << px, py, psi, v, cte, epsi;
+          std::vector<double> x_vals = {state[0]};
+          std::vector<double> y_vals = {state[1]};
+          std::vector<double> psi_vals = {state[2]};
+          std::vector<double> v_vals = {state[3]};
+          std::vector<double> cte_vals = {state[4]};
+          std::vector<double> epsi_vals = {state[5]};
+          std::vector<double> delta_vals = {};
+          std::vector<double> a_vals = {};
+
+          //for (size_t i = 0; i < iters; i++) {
+          for (size_t i = 0; i < 5; i++) {
+            std::cout << "Iteration " << i << std::endl;
+
+            auto vars = mpc.Solve(state, coeffs);
+            std::cout << "Done " << i << std::endl;
+            x_vals.push_back(vars[0]);
+            y_vals.push_back(vars[1]);
+            psi_vals.push_back(vars[2]);
+            v_vals.push_back(vars[3]);
+            cte_vals.push_back(vars[4]);
+            epsi_vals.push_back(vars[5]);
+            delta_vals.push_back(vars[6]);
+            a_vals.push_back(vars[7]);
+
+            state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
+          }
+
+
 
           /*
           * TODO: Calculate steeering angle and throttle using MPC.
@@ -98,8 +148,8 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+          double steer_value = delta_vals[int(delta_vals.size()-1)];
+          double throttle_value = a_vals[int(a_vals.size()-1)];
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
