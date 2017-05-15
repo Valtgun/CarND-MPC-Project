@@ -88,8 +88,8 @@ int main() {
           // j[1] is the data JSON object
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
-          Eigen::VectorXd ptsxE = Eigen::VectorXd::Map(ptsx.data(), ptsx.size());
-          Eigen::VectorXd ptsyE = Eigen::VectorXd::Map(ptsy.data(), ptsy.size());
+          Eigen::Map<Eigen::VectorXd> ptsxE(&ptsx[0], ptsx.size());
+          Eigen::Map<Eigen::VectorXd> ptsyE(&ptsy[0], ptsy.size());
 //          Eigen::VectorXd ptsx = j[1]["ptsx"];
 //          Eigen::VectorXd ptsy = j[1]["ptsy"];
 
@@ -99,20 +99,21 @@ int main() {
           double v = j[1]["speed"];
 
           auto coeffs = polyfit(ptsxE,ptsyE,3);
-          double cte = polyeval(coeffs, px) - py;
-          double epsi = -atan(coeffs[1]);
+          double cte = py - polyeval(coeffs, px);
+          double epsi = psi - atan(coeffs[1]+coeffs[2]*2*px+coeffs[3]*3*px*px);
 
-          cout << "DEBUG: " << endl;
-          cout << "px: " << px << endl;
-          cout << "py: " << py << endl;
-          cout << "cte: " << cte << endl;
-          cout << "coef0: " << coeffs[0] << endl;
-          cout << "coef1: " << coeffs[1] << endl;
+          //cout << "DEBUG: " << endl;
+          //cout << "px: " << px << endl;
+          //cout << "py: " << py << endl;
+          //cout << "cte: " << cte << endl;
+          //cout << "coef0: " << coeffs[0] << endl;
+          //cout << "coef1: " << coeffs[1] << endl;
           //cout << "coef2: " << coeffs[2] << endl;
           //cout << "coef3: " << coeffs[3] << endl;
 
           Eigen::VectorXd state(6);
           state << px, py, psi, v, cte, epsi;
+          /*
           std::vector<double> x_vals = {state[0]};
           std::vector<double> y_vals = {state[1]};
           std::vector<double> psi_vals = {state[2]};
@@ -139,7 +140,7 @@ int main() {
 
             state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
           }
-
+          */
 
 
           /*
@@ -148,8 +149,11 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value = delta_vals[int(delta_vals.size()-1)];
-          double throttle_value = a_vals[int(a_vals.size()-1)];
+          //double steer_value = delta_vals[int(delta_vals.size()-1)];
+          //double throttle_value = a_vals[int(a_vals.size()-1)];
+          auto vars = mpc.Solve(state, coeffs);
+          double steer_value = vars[0];
+          double throttle_value = vars[1];
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;

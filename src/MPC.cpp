@@ -6,8 +6,8 @@
 using CppAD::AD;
 
 // TODO: Set the timestep length and duration
-size_t N = 10;
-double dt = 0.1;
+size_t N = 50;
+double dt = 0.05;
 
 double ref_cte = 0;
 double ref_epsi = 0;
@@ -52,26 +52,26 @@ class FG_eval {
 
     for (int i = 0; i < N; i++) {
       fg[0] += CppAD::pow(vars[cte_start + i] - ref_cte, 2);
-//      fg[0] += CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
+      fg[0] += CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
       fg[0] += CppAD::pow(vars[v_start + i] - ref_v, 2);
     }
-/*
+
     for (int i = 0; i < N - 1; i++) {
       fg[0] += CppAD::pow(vars[delta_start + i], 2);
       fg[0] += CppAD::pow(vars[a_start + i], 2);
     }
     for (int i = 0; i < N - 2; i++) {
-      fg[0] += CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
-      fg[0] += CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
+      fg[0] += 100*CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
+      fg[0] += 100*CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
     }
-*/
+
     fg[1 + x_start] = vars[x_start];
     fg[1 + y_start] = vars[y_start];
     fg[1 + psi_start] = vars[psi_start];
     fg[1 + v_start] = vars[v_start];
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
-    cout << "vars: " << vars << endl;
+
     for (int i = 0; i < N - 1; i++) {
       AD<double> x1 = vars[x_start + i + 1];
       AD<double> y1 = vars[y_start + i + 1];
@@ -90,15 +90,15 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + i];
       AD<double> a0 = vars[a_start + i];
 
-      AD<double> f0 = coeffs[0] + coeffs[1] * x0;
-      AD<double> psides0 = CppAD::atan(coeffs[1]);
-      cout << "a: " << 2+x_start+i << endl;
-      cout << "x1: " << x1 << endl;
-      cout << "x0: " << x0 << endl;
-      cout << "psi0: " << psi0 << endl;
-      cout << "dt: " << dt << endl;
+      AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0;
+      AD<double> psides0 = CppAD::atan(coeffs[1]+coeffs[2]*2*x0+coeffs[3]*3*x0*x0);
+      //cout << "a: " << 2+x_start+i << endl;
+      //cout << "x1: " << x1 << endl;
+      //cout << "x0: " << x0 << endl;
+      //cout << "psi0: " << psi0 << endl;
+      //cout << "dt: " << dt << endl;
       fg[2 + x_start + i] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
-      cout << "fgnew: " << fg[2 + x_start + i] << endl;
+      //cout << "fgnew: " << fg[2 + x_start + i] << endl;
       fg[2 + y_start + i] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
       fg[2 + psi_start + i] = psi1 - (psi0 + v0 * delta0 / Lf * dt);
       fg[2 + v_start + i] = v1 - (v0 + a0 * dt);
@@ -108,7 +108,7 @@ class FG_eval {
           epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
 
       }
-      cout << "FG:" << fg << endl;
+      //cout << "FG:" << fg << endl;
   }
 };
 
@@ -143,7 +143,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // SHOULD BE 0 besides initial state.
   Dvector vars(n_vars);
   for (int i = 0; i < n_vars; i++) {
-    vars[i] = 0.0;
+    vars[i] = 0;
   }
 
   vars[x_start] = x;
@@ -247,8 +247,10 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   //
   // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
   // creates a 2 element double vector.
-  return {solution.x[x_start + 1],   solution.x[y_start + 1],
-          solution.x[psi_start + 1], solution.x[v_start + 1],
-          solution.x[cte_start + 1], solution.x[epsi_start + 1],
-          solution.x[delta_start],   solution.x[a_start]};
+  //return {solution.x[x_start + 1],   solution.x[y_start + 1],
+//          solution.x[psi_start + 1], solution.x[v_start + 1],
+//          solution.x[cte_start + 1], solution.x[epsi_start + 1],
+//          solution.x[delta_start],   solution.x[a_start]};
+  return {solution.x[delta_start],   solution.x[a_start]};
+
 }
