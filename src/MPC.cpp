@@ -6,14 +6,17 @@
 using CppAD::AD;
 
 // TODO: Set the timestep length and duration
-size_t N = 50;
-double dt = 0.05;
+size_t N = 10;
+double dt = 0.15;
+// Number of steps 10, interval 0.20 sec, predicting next 2 seconds
 
 double ref_cte = 0;
 double ref_epsi = 0;
 
-double ref_v = 30;
+// Reference velocity, will not get there most of the time, but aims for
+double ref_v = 100;
 
+// assign the indexes for storing values
 size_t x_start = 0;
 size_t y_start = x_start + N;
 size_t psi_start = y_start + N;
@@ -44,27 +47,42 @@ class FG_eval {
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   void operator()(ADvector& fg, const ADvector& vars) {
-    // TODO: implement MPC
-    // fg a vector of constraints, x is a vector of constraints.
-    // NOTE: You'll probably go back and forth between this function and
-    // the Solver function below.
+
+    // Setup the error calculation function
     fg[0] = 0;
 
+    // Multipliers determine significance of various error
+    int cte_mult = 1000; // for distance from path
+    int epsi_mult = 500; // for angle error
+    int v_mult = 1; // for difference with target velocity
+    // if this is increased then solver has issues more often
+
+    // minimize actuator input
+    int act_steer_mult = 50; // for steering
+    int act_vel_mult = 25; // for acceleration
+
+    // minimize difference between actuator inputs
+    int delta_act_steer_mult = 250; // for steering
+    int delta_act_vel_mult = 125; // for acceleration
+
+
+    // TODO each line
     for (int i = 0; i < N; i++) {
-      fg[0] += CppAD::pow(vars[cte_start + i] - ref_cte, 2);
-      fg[0] += CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
-      fg[0] += CppAD::pow(vars[v_start + i] - ref_v, 2);
+      fg[0] += cte_mult*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
+      fg[0] += epsi_mult*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
+      fg[0] += v_mult*CppAD::pow(vars[v_start + i] - ref_v, 2);
     }
 
     for (int i = 0; i < N - 1; i++) {
-      fg[0] += CppAD::pow(vars[delta_start + i], 2);
-      fg[0] += CppAD::pow(vars[a_start + i], 2);
+      fg[0] += act_steer_mult*CppAD::pow(vars[delta_start + i], 2);
+      fg[0] += act_vel_mult*CppAD::pow(vars[a_start + i], 2);
     }
     for (int i = 0; i < N - 2; i++) {
-      fg[0] += 100*CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
-      fg[0] += 100*CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
+      fg[0] += delta_act_steer_mult*CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
+      fg[0] += delta_act_vel_mult*CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
     }
 
+    // Assign next timestef variables
     fg[1 + x_start] = vars[x_start];
     fg[1 + y_start] = vars[y_start];
     fg[1 + psi_start] = vars[psi_start];
@@ -90,15 +108,13 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + i];
       AD<double> a0 = vars[a_start + i];
 
+      // 3rd defree polynomial
       AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2]*x0*x0 + coeffs[3]*x0*x0*x0;
+      // derrivative
       AD<double> psides0 = CppAD::atan(coeffs[1]+coeffs[2]*2*x0+coeffs[3]*3*x0*x0);
-      //cout << "a: " << 2+x_start+i << endl;
-      //cout << "x1: " << x1 << endl;
-      //cout << "x0: " << x0 << endl;
-      //cout << "psi0: " << psi0 << endl;
-      //cout << "dt: " << dt << endl;
+
+      // set the vehicle kinematc model
       fg[2 + x_start + i] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
-      //cout << "fgnew: " << fg[2 + x_start + i] << endl;
       fg[2 + y_start + i] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
       fg[2 + psi_start + i] = psi1 - (psi0 + v0 * delta0 / Lf * dt);
       fg[2 + v_start + i] = v1 - (v0 + a0 * dt);
@@ -108,7 +124,6 @@ class FG_eval {
           epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
 
       }
-      //cout << "FG:" << fg << endl;
   }
 };
 
@@ -130,13 +145,13 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   double cte = state[4];
   double epsi = state[5];
 
-  // TODO: Set the number of model variables (includes both states and inputs).
+  // Set the number of model variables (includes both states and inputs).
   // For example: If the state is a 4 element vector, the actuators is a 2
   // element vector and there are 10 timesteps. The number of variables is:
   //
   // 4 * 10 + 2 * 9
   size_t n_vars = N * 6 + (N - 1) * 2;
-  // TODO: Set the number of constraints
+  // Set the number of constraints
   size_t n_constraints = N * 6;
 
   // Initial value of the independent variables.
@@ -146,6 +161,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     vars[i] = 0;
   }
 
+  // Set the inital values
   vars[x_start] = x;
   vars[y_start] = y;
   vars[psi_start] = psi;
@@ -156,8 +172,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
 
   Dvector vars_lowerbound(n_vars);
   Dvector vars_upperbound(n_vars);
-  // TODO: Set lower and upper limits for variables.
-
+  // Set lower and upper limits for variables.
   // Set all non-actuators upper and lowerlimits
   // to the max negative and positive values.
   for (int i = 0; i < delta_start; i++) {
@@ -241,6 +256,14 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // Cost
   auto cost = solution.obj_value;
   std::cout << "Cost " << cost << std::endl;
+
+  this->mpc_x = {};
+  this->mpc_y = {};
+  for (int i = 0; i < N-1;i++){
+    this->mpc_x.push_back(solution.x[x_start+i+1]);
+    this->mpc_y.push_back(solution.x[y_start+i+1]);
+  }
+
 
   // TODO: Return the first actuator values. The variables can be accessed with
   // `solution.x[i]`.

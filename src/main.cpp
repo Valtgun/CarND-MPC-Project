@@ -70,7 +70,6 @@ int main() {
 
   // MPC is initialized here!
   MPC mpc;
-  //int iters = 10;
 
   h.onMessage([&mpc](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
@@ -88,60 +87,39 @@ int main() {
           // j[1] is the data JSON object
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
-          Eigen::Map<Eigen::VectorXd> ptsxE(&ptsx[0], ptsx.size());
-          Eigen::Map<Eigen::VectorXd> ptsyE(&ptsy[0], ptsy.size());
-//          Eigen::VectorXd ptsx = j[1]["ptsx"];
-//          Eigen::VectorXd ptsy = j[1]["ptsy"];
 
           double px = j[1]["x"];
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
 
-          auto coeffs = polyfit(ptsxE,ptsyE,3);
-          double cte = py - polyeval(coeffs, px);
-          double epsi = psi - atan(coeffs[1]+coeffs[2]*2*px+coeffs[3]*3*px*px);
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
 
-          //cout << "DEBUG: " << endl;
-          //cout << "px: " << px << endl;
-          //cout << "py: " << py << endl;
-          //cout << "cte: " << cte << endl;
-          //cout << "coef0: " << coeffs[0] << endl;
-          //cout << "coef1: " << coeffs[1] << endl;
-          //cout << "coef2: " << coeffs[2] << endl;
-          //cout << "coef3: " << coeffs[3] << endl;
+          // Adding coordinate conversion from map to vehicle space
+          vector<double> ptsXVeh(ptsx.size());
+          vector<double> ptsYVeh(ptsy.size());
+          for (auto i = 0; i < ptsx.size(); ++i) {
+            double orig_x = ptsx[i] - px;
+            double orig_y = ptsy[i] - py;
+            ptsXVeh[i] = orig_x * cos(psi) + orig_y * sin(psi);
+            ptsYVeh[i] = -orig_x * sin(psi) + orig_y * cos(psi);
+            next_x_vals.push_back(ptsXVeh[i]);
+            next_y_vals.push_back(ptsYVeh[i]);
+          }
+
+          // Convert to Eigen vector
+          Eigen::Map<Eigen::VectorXd> ptsxE(&ptsXVeh[0], ptsXVeh.size());
+          Eigen::Map<Eigen::VectorXd> ptsyE(&ptsYVeh[0], ptsYVeh.size());
+
+          // Fitting 3rd degree polynomial
+          auto coeffs = polyfit(ptsxE,ptsyE,3);
+          double cte = polyeval(coeffs, 0);
+          double epsi = atan(coeffs[1]);
 
           Eigen::VectorXd state(6);
-          state << px, py, psi, v, cte, epsi;
-          /*
-          std::vector<double> x_vals = {state[0]};
-          std::vector<double> y_vals = {state[1]};
-          std::vector<double> psi_vals = {state[2]};
-          std::vector<double> v_vals = {state[3]};
-          std::vector<double> cte_vals = {state[4]};
-          std::vector<double> epsi_vals = {state[5]};
-          std::vector<double> delta_vals = {};
-          std::vector<double> a_vals = {};
-
-          //for (size_t i = 0; i < iters; i++) {
-          for (size_t i = 0; i < 5; i++) {
-            std::cout << "Iteration " << i << std::endl;
-
-            auto vars = mpc.Solve(state, coeffs);
-            std::cout << "Done " << i << std::endl;
-            x_vals.push_back(vars[0]);
-            y_vals.push_back(vars[1]);
-            psi_vals.push_back(vars[2]);
-            v_vals.push_back(vars[3]);
-            cte_vals.push_back(vars[4]);
-            epsi_vals.push_back(vars[5]);
-            delta_vals.push_back(vars[6]);
-            a_vals.push_back(vars[7]);
-
-            state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
-          }
-          */
-
+          //state << px, py, psi, v, cte, epsi;
+          state << 0.0, 0.0, 0.0, v, cte, epsi;
 
           /*
           * TODO: Calculate steeering angle and throttle using MPC.
@@ -149,15 +127,24 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          //double steer_value = delta_vals[int(delta_vals.size()-1)];
-          //double throttle_value = a_vals[int(a_vals.size()-1)];
           auto vars = mpc.Solve(state, coeffs);
           double steer_value = vars[0];
           double throttle_value = vars[1];
 
           json msgJson;
-          msgJson["steering_angle"] = steer_value;
+          msgJson["steering_angle"] = -steer_value; // Invert steering values
           msgJson["throttle"] = throttle_value;
+
+          // Add projected trajectory, green line
+          vector<double> mpc_x_vals = mpc.mpc_x;
+          vector<double> mpc_y_vals = mpc.mpc_y;
+          msgJson["mpc_x"] = mpc_x_vals;
+          msgJson["mpc_y"] = mpc_y_vals;
+
+          // Add waypoints, yellow line
+          msgJson["next_x"] = next_x_vals;
+          msgJson["next_y"] = next_y_vals;
+
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           std::cout << msg << std::endl;
           // Latency
