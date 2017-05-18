@@ -66,7 +66,6 @@ class FG_eval {
     int delta_act_vel_mult = 125; // for acceleration
 
 
-    // TODO each line
     for (int i = 0; i < N; i++) {
       fg[0] += cte_mult*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
       fg[0] += epsi_mult*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
